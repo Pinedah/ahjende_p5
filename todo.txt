@@ -1,0 +1,10 @@
+📋 P5: FACTORIZACIÓN DINÁMICA
+🔄 Eventualmente se pueden añadir o quitar campos, incluso reordenar, por lo tanto, se debe escalar la misma práctica haciendo dinámica la adición de campos en títulos de la tabla, columnas, la función de obtenerCampo, y demás elemento necesario con una propuesta más robusta que resuelva dicha problemática.
+
+Adicionalmente el alta (insert) debe operar apenas el usuario escriba sobre una celda perteneciente a una fila vacía, pero si escribe en otra celda de la misma fila recién generada se actualizará vinculándola al id_cit recién generado.
+
+📋 P6: DROPDOWN EJECUTIVOS
+📝 Lo previo + adición de columna nueva a la tabla llamada: EJECUTIVO de tipo dropdown con nom_eje, pero update de id_eje2.
+
+📋 P7: BUSCADOR DE CITAS
+🔍 Todo lo previo + Adición de buscador de cita (omitiendo filtro de fecha).
