@@ -61,15 +61,21 @@
                 <!-- Buscador de citas -->
                 <div class="search-section">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label for="buscador-citas"><strong>Buscar Citas:</strong></label>
                             <input type="text" id="buscador-citas" class="form-control" placeholder="Buscar por nombre, teléfono o ejecutivo...">
                         </div>
-                        <div class="col-md-3 d-flex align-items-end">
+                        <div class="col-md-2 d-flex align-items-end">
                             <button class="btn btn-primary" onclick="buscarCitas()">Buscar</button>
                         </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-secondary" onclick="limpiarBusqueda()">Actualizar tabla</button>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn btn-secondary" onclick="limpiarBusqueda()">Actualizar</button>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn btn-success" onclick="mostrarModalNuevaColumna()">+ Columna</button>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button class="btn btn-info" onclick="recargarEstructura()">🔄 Recargar</button>
                         </div>
                     </div>
                 </div>
@@ -84,9 +90,11 @@
                         <div class="col-md-4 d-flex align-items-end">
                             <button class="btn btn-info" onclick="cargarCitas()">Filtrar</button>
                         </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button class="btn btn-success" onclick="agregarNuevaCita()">Agregar Cita</button>
-                        </div>
+                        <!--
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button class="btn btn-success" onclick="agregarNuevaCita()">Agregar Cita</button>
+                            </div>
+                        -->
                     </div>
                 </div>
 
@@ -97,21 +105,50 @@
         </div>
     </div>
 
+    <!-- Modal para agregar nueva columna -->
+    <div class="modal fade" id="modalNuevaColumna" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Agregar Nueva Columna</h5>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="formNuevaColumna">
+                        <div class="form-group">
+                            <label for="nombreColumna">Nombre de la Columna:</label>
+                            <input type="text" class="form-control" id="nombreColumna" placeholder="ej: observaciones" required>
+                            <small class="form-text text-muted">Solo letras, números y guiones bajos. No espacios.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="tipoColumna">Tipo de Columna:</label>
+                            <select class="form-control" id="tipoColumna">
+                                <option value="VARCHAR(100)">Texto (VARCHAR)</option>
+                                <option value="TEXT">Texto Largo (TEXT)</option>
+                                <option value="INT">Número Entero (INT)</option>
+                                <option value="DECIMAL(10,2)">Número Decimal</option>
+                                <option value="DATE">Fecha (DATE)</option>
+                                <option value="TIME">Hora (TIME)</option>
+                                <option value="DATETIME">Fecha y Hora</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="crearNuevaColumna()">Crear Columna</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // =====================================
         // CONFIGURACIÓN DE COLUMNAS
         // =====================================
         
-        // Configuración fija de columnas
-        var columnasConfig = [
-            { key: 'horario', header: 'HORARIO', type: 'text', readOnly: true, className: 'horario-column', width: 150 },
-            { key: 'id_cit', header: 'ID', type: 'text', readOnly: true, width: 60 },
-            { key: 'cit_cit', header: 'FECHA', type: 'date', dateFormat: 'YYYY-MM-DD', width: 120 },
-            { key: 'hor_cit', header: 'HORA', type: 'time', timeFormat: 'HH:mm', width: 100 },
-            { key: 'nom_cit', header: 'NOMBRE', type: 'text', width: 200 },
-            { key: 'tel_cit', header: 'TELÉFONO', type: 'text', width: 150 },
-            { key: 'id_eje2', header: 'EJECUTIVO', type: 'dropdown', source: [], width: 180 }
-        ];
+        // Configuración dinámica de columnas (se carga desde el servidor)
+        var columnasConfig = [];
         
         // Variables globales
         var hot = null;
@@ -130,19 +167,44 @@
             var fechaHoy = new Date().toISOString().split('T')[0];
             $('#fecha-filtro').val(fechaHoy);
             
-            cargarEjecutivos().then(function() {
+            // Cargar estructura de columnas primero
+            cargarEstructuraTabla().then(function() {
+                return cargarEjecutivos();
+            }).then(function() {
                 inicializarTabla();
                 cargarCitas();
             }).catch(function(error) {
                 console.error('Error en inicialización:', error);
-                inicializarTabla();
-                cargarCitas();
+                alert('Error al inicializar la aplicación: ' + error);
             });
         });
         
         // =====================================
         // FUNCIONES DE CONFIGURACIÓN
         // =====================================
+        
+        function cargarEstructuraTabla() {
+            return new Promise(function(resolve, reject) {
+                $.ajax({
+                    url: 'server/controlador_citas.php',
+                    type: 'POST',
+                    data: { action: 'obtener_estructura_tabla' },
+                    dataType: 'json',
+                    success: function(response) {
+                        if(response.success) {
+                            columnasConfig = response.data;
+                            console.log('Estructura de tabla cargada:', columnasConfig);
+                            resolve();
+                        } else {
+                            reject('Error al cargar estructura de tabla: ' + response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        reject('Error de conexión al cargar estructura: ' + error);
+                    }
+                });
+            });
+        }
         
         function generarHeaders() {
             return columnasConfig.map(function(col) { return col.header; });
@@ -248,7 +310,7 @@
                 rowHeaders: true,
                 height: 600,
                 licenseKey: 'non-commercial-and-evaluation',
-                contextMenu: true,
+                contextMenu: ['row_above', 'row_below', 'col_left', 'col_right', 'remove_row', 'remove_col', 'undo', 'redo'],
                 stretchH: 'all',
                 
                 // Evento para manejar cambios
@@ -356,166 +418,82 @@
             });
         }
 
-        function agregarNuevaColumna() {
-            // Agregar columna al final de la tabla usando el método más compatible
-            console.log('Agregando nueva columna al final de la tabla...');
-            
-            try {
-                // Intentar con insert_col_end primero
-                hot.alter('insert_col_end');
-            } catch (e) {
-                console.log('insert_col_end no disponible, intentando con insert_col_start...');
-                try {
-                    // Si no funciona, intentar con insert_col_start al final
-                    hot.alter('insert_col_start', hot.countCols());
-                } catch (e2) {
-                    console.log('insert_col_start no disponible, usando método manual...');
-                    // Método manual: agregar columna a la configuración y recargar
-                    agregarColumnaDinamicaManual();
-                }
-            }
+        function agregarNuevaColumna(){
+            // Esta función ahora se llama desde el modal
+            mostrarModalNuevaColumna();
         }
         
-        function agregarColumnaDinamicaManual() {
-            console.log('Agregando columna usando método manual...');
+        function mostrarModalNuevaColumna() {
+            $('#modalNuevaColumna').modal('show');
+        }
+        
+        function crearNuevaColumna() {
+            var nombreColumna = $('#nombreColumna').val().trim();
+            var tipoColumna = $('#tipoColumna').val();
             
-            var timestamp = Date.now();
-            var randomSuffix = Math.floor(Math.random() * 1000);
-            var nombreColumna = 'col_dinamica_' + timestamp + '_' + randomSuffix;
-            var headerColumna = 'Nueva Columna ' + (columnasConfig.length + 1);
+            if (!nombreColumna) {
+                alert('Por favor ingrese un nombre para la columna');
+                return;
+            }
             
-            console.log('Intentando crear columna:', nombreColumna);
-            console.log('URL del servidor:', 'server/controlador_citas.php');
+            // Validar formato del nombre
+            if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(nombreColumna)) {
+                alert('El nombre de la columna debe comenzar con una letra y contener solo letras, números y guiones bajos');
+                return;
+            }
             
-            // Crear la columna en la base de datos primero
+            // Verificar que no exista ya
+            var existeColumna = columnasConfig.some(function(col) {
+                return col.key === nombreColumna;
+            });
+            
+            if (existeColumna) {
+                alert('Ya existe una columna con ese nombre');
+                return;
+            }
+            
             $.ajax({
                 url: 'server/controlador_citas.php',
                 type: 'POST',
                 data: {
-                    action: 'crear_columna_dinamica',
+                    action: 'crear_nueva_columna',
                     nombre_columna: nombreColumna,
-                    posicion: columnasConfig.length
+                    tipo_columna: tipoColumna
                 },
                 dataType: 'json',
-                timeout: 10000, // 10 segundos de timeout
-                beforeSend: function() {
-                    console.log('Enviando request al servidor...');
-                },
                 success: function(response) {
-                    console.log('Respuesta del servidor recibida:', response);
-                    
-                    if(response && response.success) {
-                        console.log('Columna creada en BD:', response.data.nombre_columna);
+                    if(response.success) {
+                        alert('Columna creada correctamente: ' + response.data.nombre_columna);
+                        $('#modalNuevaColumna').modal('hide');
+                        $('#nombreColumna').val('');
+                        $('#tipoColumna').val('VARCHAR(100)');
                         
-                        // Agregar a la configuración local
-                        var nuevaColumna = {
-                            key: response.data.nombre_columna,
-                            header: headerColumna,
-                            type: 'text',
-                            width: 150
-                        };
-                        
-                        columnasConfig.push(nuevaColumna);
-                        
-                        // Actualizar la tabla
-                        actualizarConfiguracionTabla();
-                        
-                        // Recargar datos
-                        setTimeout(function() {
-                            if (modoFiltroFecha) {
-                                cargarCitas();
-                            } else {
-                                buscarCitas();
-                            }
-                        }, 300);
-                        
+                        // Recargar estructura y tabla
+                        recargarEstructura();
                     } else {
-                        var errorMsg = response && response.message ? response.message : 'Respuesta inválida del servidor';
-                        console.error('Error del servidor:', errorMsg);
-                        alert('Error al crear columna: ' + errorMsg);
+                        alert('Error al crear columna: ' + response.message);
                     }
                 },
-                error: function(xhr, status, error) {
-                    console.error('Error AJAX completo:', {
-                        xhr: xhr,
-                        status: status,
-                        error: error,
-                        responseText: xhr.responseText,
-                        readyState: xhr.readyState,
-                        statusText: xhr.statusText
-                    });
-                    
-                    var errorMessage = 'Error de conexión al crear columna.\n';
-                    errorMessage += 'Status: ' + status + '\n';
-                    errorMessage += 'Error: ' + error + '\n';
-                    
-                    if (xhr.responseText) {
-                        errorMessage += 'Respuesta del servidor: ' + xhr.responseText.substring(0, 200);
-                    }
-                    
-                    alert(errorMessage);
-                    console.log('Verificando si el archivo del servidor existe...');
-                    
-                    // Verificar si el archivo del controlador existe
-                    $.ajax({
-                        url: 'server/controlador_citas.php',
-                        type: 'HEAD',
-                        success: function() {
-                            console.log('✓ El archivo controlador_citas.php existe y es accesible');
-                        },
-                        error: function() {
-                            console.error('✗ El archivo controlador_citas.php NO es accesible');
-                            alert('Error: No se puede acceder al archivo server/controlador_citas.php');
-                        }
-                    });
+                error: function() {
+                    alert('Error de conexión al crear columna');
                 }
             });
         }
         
-        function eliminarColumnaDinamicaManual(colIndex, nombreColumna) {
-            console.log('Eliminando columna dinámica:', nombreColumna, 'en índice:', colIndex);
-            
-            if (confirm('¿Está seguro de que desea eliminar esta columna? Esta acción no se puede deshacer.')) {
-                // Eliminar de la base de datos
-                $.ajax({
-                    url: 'server/controlador_citas.php',
-                    type: 'POST',
-                    data: {
-                        action: 'eliminar_columna_dinamica',
-                        nombre_columna: nombreColumna
-                    },
-                    dataType: 'json',
-                    success: function(response) {
-                        if(response.success) {
-                            console.log('Columna eliminada de BD:', nombreColumna);
-                            
-                            // Eliminar de la configuración local
-                            columnasConfig = columnasConfig.filter(function(col) {
-                                return col.key !== nombreColumna;
-                            });
-                            
-                            // Actualizar la tabla
-                            actualizarConfiguracionTabla();
-                            
-                            // Recargar datos
-                            setTimeout(function() {
-                                if (modoFiltroFecha) {
-                                    cargarCitas();
-                                } else {
-                                    buscarCitas();
-                                }
-                            }, 300);
-                            
-                        } else {
-                            alert('Error al eliminar columna: ' + response.message);
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error AJAX al eliminar columna:', error);
-                        alert('Error de conexión al eliminar columna');
-                    }
-                });
-            }
+        function recargarEstructura() {
+            console.log('Recargando estructura de tabla...');
+            cargarEstructuraTabla().then(function() {
+                console.log('Estructura recargada, reinicializando tabla...');
+                // Reinicializar tabla con nueva estructura
+                if (hot) {
+                    hot.destroy();
+                }
+                inicializarTabla();
+                cargarCitas();
+            }).catch(function(error) {
+                console.error('Error al recargar estructura:', error);
+                alert('Error al recargar estructura: ' + error);
+            });
         }
         
         function actualizarConfiguracionTabla() {
@@ -1120,6 +1098,50 @@
                 guardarCambiosPendientes();
             }
         });
+        
+        // =====================================
+        // FUNCIONES DE DEBUG
+        // =====================================
+        
+        function debugearEstado() {
+            console.log('=== ESTADO ACTUAL DE LA APLICACIÓN ===');
+            console.log('Columnas Config:', columnasConfig);
+            console.log('Ejecutivos:', ejecutivos);
+            console.log('Ejecutivos Dropdown:', ejecutivosDropdown);
+            console.log('Modo Filtro Fecha:', modoFiltroFecha);
+            console.log('Fila Editándose:', filaEditandose);
+            console.log('Datos Pendientes:', datosPendientes);
+            
+            if (hot) {
+                console.log('Handsontable Data:', hot.getData());
+                console.log('Handsontable Headers:', hot.getColHeader());
+            }
+        }
+        
+        function probarEstructuraTabla() {
+            cargarEstructuraTabla().then(function() {
+                console.log('✅ Estructura cargada correctamente');
+                debugearEstado();
+            }).catch(function(error) {
+                console.error('❌ Error al cargar estructura:', error);
+            });
+        }
+        
+        function probarConexion() {
+            $.ajax({
+                url: 'server/controlador_citas.php',
+                type: 'POST',
+                data: { action: 'test_conexion' },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('✅ Conexión exitosa:', response);
+                },
+                error: function(xhr, status, error) {
+                    console.error('❌ Error de conexión:', error);
+                    console.error('Response:', xhr.responseText);
+                }
+            });
+        }
         
     </script>
 </body>

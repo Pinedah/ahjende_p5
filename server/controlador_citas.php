@@ -199,113 +199,122 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 			}
 		break;
 
-		case 'crear_columna_dinamica':
-			$nombre_columna = escape($_POST['nombre_columna'], $connection);
-			$posicion = isset($_POST['posicion']) ? intval($_POST['posicion']) : 999;
+		case 'obtener_estructura_tabla':
+			$nombreTabla = 'cita';
+			$query = "SHOW COLUMNS FROM $nombreTabla";
+			$columnas = ejecutarConsulta($query, $connection);
 			
-			// Verificar si la columna ya existe
-			$queryCheck = "SHOW COLUMNS FROM cita LIKE '$nombre_columna'";
-			$existe = ejecutarConsulta($queryCheck, $connection);
-			
-			if ($existe && count($existe) > 0) {
-				echo respuestaError('La columna ya existe');
-				break;
-			}
-			
-			// Crear la columna en la tabla
-			$queryAlter = "ALTER TABLE cita ADD COLUMN `$nombre_columna` TEXT NULL";
-			
-			if(mysqli_query($connection, $queryAlter)) {
-				// Verificar que la columna se creó correctamente
-				$queryVerify = "SHOW COLUMNS FROM cita LIKE '$nombre_columna'";
-				$verificacion = ejecutarConsulta($queryVerify, $connection);
+			if($columnas !== false) {
+				// Procesar columnas para el frontend
+				$columnasConfig = [];
 				
-				if ($verificacion && count($verificacion) > 0) {
-					// Guardar información de la columna dinámica (opcional)
-					$queryInsert = "INSERT INTO columnas_dinamicas (nombre_columna, posicion, tipo, fecha_creacion) 
-								   VALUES ('$nombre_columna', $posicion, 'text', NOW())
-								   ON DUPLICATE KEY UPDATE posicion = $posicion";
+				foreach($columnas as $columna) {
+					$campo = $columna['Field'];
+					$tipo = $columna['Type'];
 					
-					mysqli_query($connection, $queryInsert); // No importa si falla esta parte
+					// Configuración por defecto
+					$config = [
+						'key' => $campo,
+						'header' => strtoupper(str_replace('_', ' ', $campo)),
+						'type' => 'text',
+						'width' => 120
+					];
 					
-					echo respuestaExito([
-						'nombre_columna' => $nombre_columna,
-						'posicion' => $posicion,
-						'tipo' => 'text'
-					], 'Columna dinámica creada correctamente');
-				} else {
-					echo respuestaError('Error: La columna no se creó correctamente');
-				}
-			} else {
-				echo respuestaError('Error al crear columna: ' . mysqli_error($connection));
-			}
-		break;
-
-		case 'eliminar_columna_dinamica':
-			$nombre_columna = escape($_POST['nombre_columna'], $connection);
-			
-			// Verificar que la columna existe y es dinámica (no es una columna base)
-			$columnasBasicas = ['id_cit', 'cit_cit', 'hor_cit', 'nom_cit', 'tel_cit', 'id_eje2'];
-			
-			if (in_array($nombre_columna, $columnasBasicas)) {
-				echo respuestaError('No se puede eliminar una columna básica del sistema');
-				break;
-			}
-			
-			// Verificar si la columna existe
-			$queryCheck = "SHOW COLUMNS FROM cita LIKE '$nombre_columna'";
-			$existe = ejecutarConsulta($queryCheck, $connection);
-			
-			if (!$existe || count($existe) === 0) {
-				echo respuestaError('La columna no existe');
-				break;
-			}
-			
-			// Eliminar la columna de la tabla
-			$queryAlter = "ALTER TABLE cita DROP COLUMN `$nombre_columna`";
-			
-			if(mysqli_query($connection, $queryAlter)) {
-				// Verificar que la columna se eliminó correctamente
-				$queryVerify = "SHOW COLUMNS FROM cita LIKE '$nombre_columna'";
-				$verificacion = ejecutarConsulta($queryVerify, $connection);
-				
-				if (!$verificacion || count($verificacion) === 0) {
-					// Eliminar información de la columna dinámica
-					$queryDelete = "DELETE FROM columnas_dinamicas WHERE nombre_columna = '$nombre_columna'";
-					mysqli_query($connection, $queryDelete); // No importa si falla esta parte
-					
-					echo respuestaExito([
-						'nombre_columna' => $nombre_columna
-					], 'Columna dinámica eliminada correctamente');
-				} else {
-					echo respuestaError('Error: La columna no se eliminó correctamente');
-				}
-			} else {
-				echo respuestaError('Error al eliminar columna: ' . mysqli_error($connection));
-			}
-		break;
-
-		case 'obtener_columnas_dinamicas':
-			// Obtener todas las columnas que no son las básicas
-			$columnasBasicas = ['id_cit', 'cit_cit', 'hor_cit', 'nom_cit', 'tel_cit', 'id_eje2'];
-			
-			$queryColumnas = "SHOW COLUMNS FROM cita";
-			$todasColumnas = ejecutarConsulta($queryColumnas, $connection);
-			
-			$columnasDinamicas = [];
-			if ($todasColumnas) {
-				foreach ($todasColumnas as $columna) {
-					if (!in_array($columna['Field'], $columnasBasicas)) {
-						$columnasDinamicas[] = [
-							'nombre' => $columna['Field'],
-							'tipo' => $columna['Type']
-						];
+					// Configuraciones específicas por campo
+					switch($campo) {
+						case 'id_cit':
+							$config['header'] = 'ID';
+							$config['readOnly'] = true;
+							$config['width'] = 60;
+							break;
+						case 'cit_cit':
+							$config['header'] = 'FECHA';
+							$config['type'] = 'date';
+							$config['dateFormat'] = 'YYYY-MM-DD';
+							$config['width'] = 120;
+							break;
+						case 'hor_cit':
+							$config['header'] = 'HORA';
+							$config['type'] = 'time';
+							$config['timeFormat'] = 'HH:mm';
+							$config['width'] = 100;
+							break;
+						case 'nom_cit':
+							$config['header'] = 'NOMBRE';
+							$config['width'] = 200;
+							break;
+						case 'tel_cit':
+							$config['header'] = 'TELÉFONO';
+							$config['width'] = 150;
+							break;
+						case 'id_eje2':
+							$config['header'] = 'EJECUTIVO';
+							$config['type'] = 'dropdown';
+							$config['width'] = 180;
+							break;
+						default:
+							// Detectar tipo automáticamente
+							if(strpos($tipo, 'date') !== false) {
+								$config['type'] = 'date';
+								$config['dateFormat'] = 'YYYY-MM-DD';
+							} elseif(strpos($tipo, 'time') !== false) {
+								$config['type'] = 'time';
+								$config['timeFormat'] = 'HH:mm';
+							} elseif(strpos($tipo, 'int') !== false) {
+								$config['type'] = 'numeric';
+							} elseif(strpos($tipo, 'decimal') !== false || strpos($tipo, 'float') !== false) {
+								$config['type'] = 'numeric';
+							}
+							break;
 					}
+					
+					$columnasConfig[] = $config;
 				}
+				
+				// Agregar columna de horario al inicio
+				array_unshift($columnasConfig, [
+					'key' => 'horario',
+					'header' => 'HORARIO',
+					'type' => 'text',
+					'readOnly' => true,
+					'className' => 'horario-column',
+					'width' => 150
+				]);
+				
+				echo respuestaExito($columnasConfig, 'Estructura de tabla obtenida correctamente');
+			} else {
+				echo respuestaError('Error al obtener estructura de tabla: ' . mysqli_error($connection));
+			}
+		break;
+
+		case 'crear_nueva_columna':
+			$nombreTabla = 'cita';
+			$nombreNuevaColumna = isset($_POST['nombre_columna']) ? escape($_POST['nombre_columna'], $connection) : '';
+			$tipoColumna = isset($_POST['tipo_columna']) ? escape($_POST['tipo_columna'], $connection) : 'VARCHAR(100)';
+			
+			if(empty($nombreNuevaColumna)) {
+				echo respuestaError("Nombre de columna no proporcionado");
+				break;
 			}
 			
-			echo respuestaExito($columnasDinamicas, 'Columnas dinámicas obtenidas correctamente');
+			// Validar que el nombre no contenga caracteres especiales
+			if(!preg_match('/^[a-zA-Z][a-zA-Z0-9_]*$/', $nombreNuevaColumna)) {
+				echo respuestaError("Nombre de columna no válido. Use solo letras, números y guiones bajos.");
+				break;
+			}
+			
+			$query = "ALTER TABLE $nombreTabla ADD COLUMN $nombreNuevaColumna $tipoColumna";
+
+			if(mysqli_query($connection, $query)){
+				echo respuestaExito([
+					'nombre_columna' => $nombreNuevaColumna,
+					'tipo_columna' => $tipoColumna
+				], "Columna '$nombreNuevaColumna' agregada correctamente");
+			}else{
+				echo respuestaError("Error al crear la nueva columna: " . mysqli_error($connection));
+			}
 		break;
+
 
 		default:
 			echo respuestaError('Acción no válida');
